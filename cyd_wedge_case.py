@@ -48,6 +48,15 @@ USB_Z0, USB_Z1 = -5.8, 2.7
 SD_X0, SD_X1 = -11.5, 4.0
 SD_Z0, SD_Z1 = -2.6, 0.4
 
+# JST cable-exit variant: a port in the wall in front of each side-entry JST 1.25 connector,
+# so plugs go in from outside and the cables leave the case. Centres come from the
+# manufacturer's interface drawing (good to ~1 mm); ports leave ~1 mm round the plug.
+JST_Z0, JST_Z1 = -4.6, 0.6
+JST_TOP = [(11.85, 8.6), (28.5, 8.6)]    # CN1, P3 on the microSD (+y) wall: centre x, width
+JST_BOTTOM = [(-16.15, 7.0)]             # speaker on the -y wall
+USB_Y0_JST = -13.5                       # USB slot stretched over the P1 serial/power connector
+SD_POCKET_MARGIN_JST = 1.5               # narrower microSD pocket, leaves a web next to CN1
+
 # ------------------------------------------------------------------ case
 FACE_IN = DISP_TOP + 1.0                # 1 mm air gap over the touch panel
 FACE_T = 2.5
@@ -177,7 +186,7 @@ front_half = body_b.intersect(box(-BIG, BIG, -BIG, BIG, RIM_Z, BIG))
 rear_half = body_b.intersect(box(-BIG, BIG, -BIG, BIG, -BIG, RIM_Z))
 
 # ------------------------------------------------------------------ front bezel
-def make_bezel(hole_d):
+def make_bezel(hole_d, jst=False):
     bz = front_half.cut(rbox(CAV_X0, CAV_X1, -CAV_Y, CAV_Y, RIM_Z - 1, FACE_IN, 2.5))
 
     # screen window = LCD viewing area, chamfered outward for finger/stylus reach
@@ -205,13 +214,22 @@ def make_bezel(hole_d):
         bz = bz.cut(cyl(hx, hy, PCB_T - 0.1, INSERT_TOP, hole_d))
 
     # USB-C + micro-USB slot (USB end wall)
-    usb = (cq.Workplane().box(10, USB_Y1 - USB_Y0, USB_Z1 - USB_Z0, centered=False)
-           .translate((-OUT_X - 2, USB_Y0, USB_Z0)).edges("|X").fillet(2.5))
+    usb_y0 = USB_Y0_JST if jst else USB_Y0
+    usb = (cq.Workplane().box(10, USB_Y1 - usb_y0, USB_Z1 - USB_Z0, centered=False)
+           .translate((-OUT_X - 2, usb_y0, USB_Z0)).edges("|X").fillet(2.5))
     bz = bz.cut(usb)
 
     # microSD slot + fingernail pocket
+    pocket_r = SD_POCKET_MARGIN_JST if jst else 3
     bz = bz.cut(rbox(SD_X0, SD_X1, CAV_Y - 1, OUT_Y + 2, SD_Z0, SD_Z1, 0.8, "|Y"))
-    bz = bz.cut(rbox(SD_X0 - 3, SD_X1 + 3, OUT_Y - 1.4, OUT_Y + 2, SD_Z0 - 2.4, SD_Z1 + 2.2, 2.0, "|Y"))
+    bz = bz.cut(rbox(SD_X0 - 3, SD_X1 + pocket_r, OUT_Y - 1.4, OUT_Y + 2,
+                     SD_Z0 - 2.4, SD_Z1 + 2.2, 2.0, "|Y"))
+
+    if jst:
+        for cx, w in JST_TOP:
+            bz = bz.cut(rbox(cx - w / 2, cx + w / 2, CAV_Y - 1, OUT_Y + 2, JST_Z0, JST_Z1, 1.0, "|Y"))
+        for cx, w in JST_BOTTOM:
+            bz = bz.cut(rbox(cx - w / 2, cx + w / 2, -OUT_Y - 2, -CAV_Y + 1, JST_Z0, JST_Z1, 1.0, "|Y"))
     return bz
 
 
@@ -260,7 +278,7 @@ def offset_body(wp, d):
     return cq.Workplane().add(s)
 
 
-def make_cap(side):
+def make_cap(side, jst=False):
     """side = +1: light-sensor end, side = -1: USB end. Returned in the desk frame."""
     outer = to_world(body_b)
     # straight prism of the side profile grown by CAP_T; the case ends are rounded, so the
@@ -293,8 +311,9 @@ def make_cap(side):
             cap = cap.cut(cyl(hx, hy, -BIG, SEAT_Z, CAP_SCREW_D))
     if side < 0:
         m = 1.0
-        usb = (cq.Workplane().box(20, USB_Y1 - USB_Y0 + 2 * m, USB_Z1 - USB_Z0 + 2 * m, centered=False)
-               .translate((-OUT_X - 19.5, USB_Y0 - m, USB_Z0 - m)).edges("|X").fillet(2.5 + m))
+        usb_y0 = USB_Y0_JST if jst else USB_Y0
+        usb = (cq.Workplane().box(20, USB_Y1 - usb_y0 + 2 * m, USB_Z1 - USB_Z0 + 2 * m, centered=False)
+               .translate((-OUT_X - 19.5, usb_y0 - m, USB_Z0 - m)).edges("|X").fillet(2.5 + m))
         cap = cap.cut(usb)
     return to_world(cap)
 
@@ -313,6 +332,14 @@ if __name__ == "__main__":
     fit_test = bezel.intersect(box(-BIG, -33.0, -BIG, BIG, -BIG, BIG))
     cap_usb, cap_ldr = make_cap(-1), make_cap(+1)
 
+    # JST cable-exit variant (the wedge and the sensor-end cap are shared)
+    bezel_jst = make_bezel(INSERT_D, jst=True)
+    bezel_jst_st = make_bezel(SELFTAP_D, jst=True)
+    cap_usb_jst = make_cap(-1, jst=True)
+    # L-shaped check of the USB end + microSD wall ports, located by three of the bosses
+    fit_test_jst = bezel_jst.intersect(box(-BIG, -33.0, -BIG, BIG, -BIG, BIG).union(
+        box(-BIG, BIG, 12.0, BIG, -BIG, BIG)))
+
     def cap_print_pose(cap, side):
         # end panel flat on the bed
         c = cap.rotate((0, 0, 0), (0, 1, 0), 90 * side)
@@ -325,6 +352,10 @@ if __name__ == "__main__":
         "CYD2USB_wedge_fit_test_usb_end.stl": bezel_print_pose(fit_test),
         "CYD2USB_wedge_tpu_cap_usb_end.stl": cap_print_pose(cap_usb, -1),
         "CYD2USB_wedge_tpu_cap_sensor_end.stl": cap_print_pose(cap_ldr, +1),
+        "CYD2USB_wedge_jst_front_bezel_heatset.stl": bezel_print_pose(bezel_jst),
+        "CYD2USB_wedge_jst_front_bezel_selftap.stl": bezel_print_pose(bezel_jst_st),
+        "CYD2USB_wedge_jst_tpu_cap_usb_end.stl": cap_print_pose(cap_usb_jst, -1),
+        "CYD2USB_wedge_jst_fit_test.stl": bezel_print_pose(fit_test_jst),
     }
     for name, part in exports.items():
         path = os.path.join(OUT, name)
