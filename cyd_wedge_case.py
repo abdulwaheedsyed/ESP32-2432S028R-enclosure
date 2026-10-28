@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Syed Abdul Waheed
 """
 Rugged 45-degree desk wedge enclosure for the ESP32-2432S028R "Cheap Yellow Display",
 dual-USB (micro-USB + USB-C, a.k.a. CYD2USB) revision.
@@ -5,9 +7,10 @@ dual-USB (micro-USB + USB-C, a.k.a. CYD2USB) revision.
 Two parts, both print without supports in PLA:
   * front bezel  - prints face-down on the bed
   * rear wedge   - prints standing on its flat base
+plus two optional TPU end caps (bumpers + non-slip feet), printed end panel down.
 
 Fastening: 4x M3x16 socket-head screws inserted from the back/bottom of the wedge,
-through the CYD mounting holes, into 4x M3 heat-set inserts (short, 4 mm long)
+through the CYD mounting holes, into 4x M3 heat-set inserts (4 or 5.7 mm long)
 in the bezel. Self-tapping variant of the bezel is also exported.
 
 Coordinate frame used for all board features ("board frame"):
@@ -18,7 +21,7 @@ Origin = centre of the PCB. Sources: manufacturer drawings (Shenzhen Jingcai
 ESP32-2432S028R spec + JC2432A028N LCD drawing) cross-checked against a
 known-good USB-C CYD case.
 
-Run:  python3 cyd_wedge_case.py   (needs cadquery)
+Run:  pip install cadquery trimesh && python3 cyd_wedge_case.py
 """
 import math
 import os
@@ -77,6 +80,14 @@ HEEL_Y = 66.0                           # base length; long heel stops it tippin
 HEEL_H = 4.0                            # blunt heel end
 KNEE_Z = 17.0                           # where the vertical back turns into the heel ramp
 FOOT_D, FOOT_DEPTH = 10.5, 0.8          # recesses for stick-on rubber bumpers
+
+# optional TPU end caps (bumpers + non-slip feet)
+CAP_T = 3.0                             # TPU thickness
+CAP_LIP = 13.0                          # wrap onto back, base, top and bottom (covers the screw entries)
+CAP_FACE_LIP = 6.0                      # shorter on the screen face to clear the light-sensor window
+CAP_CHAMFER = 2.5                       # 45 deg edge round the end panel so it prints flat
+CAP_GRIP = 0.15                         # inner surface undersize: the cap stays on by stretch
+CAP_SCREW_D = 7.4                       # access holes over the screw entries
 
 S2 = math.sqrt(0.5)
 
@@ -232,6 +243,62 @@ def make_wedge():
     return wd
 
 
+# ------------------------------------------------------------------ TPU end caps
+def offset_body(wp, d):
+    """grow (d > 0) or shrink (d < 0) a solid by d."""
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeOffsetShape
+    from OCP.BRepOffset import BRepOffset_Skin
+    from OCP.GeomAbs import GeomAbs_Arc
+    mk = BRepOffsetAPI_MakeOffsetShape()
+    mk.PerformByJoin(wp.val().wrapped, d, 1e-5, BRepOffset_Skin, False, False, GeomAbs_Arc)
+    s = cq.Shape.cast(mk.Shape())
+    if isinstance(s, cq.Shell):
+        s = cq.Solid.makeSolid(s)
+    s = s.fix()
+    if not s.isValid() or s.Volume() <= 0:
+        raise ValueError("offset failed")
+    return cq.Workplane().add(s)
+
+
+def make_cap(side):
+    """side = +1: light-sensor end, side = -1: USB end. Returned in the desk frame."""
+    outer = to_world(body_b)
+    # straight prism of the side profile grown by CAP_T; the case ends are rounded, so the
+    # TPU comes out thickest right on the corners
+    prof = outer.intersect(box(-0.5, 0.5, -BIG, BIG, -BIG, BIG)).faces(">X").val()
+    wire = prof.outerWire().offset2D(CAP_T, "arc")[0]
+    x0 = OUT_X - CAP_LIP if side > 0 else -(OUT_X + CAP_T)
+    wire = wire.translate(cq.Vector(x0 - 0.5, 0, 0))
+    prism = cq.Workplane().add(cq.Solid.extrudeLinear(cq.Face.makeFromWires(wire),
+                                                      cq.Vector(CAP_LIP + CAP_T, 0, 0)))
+    prism = prism.faces(">X" if side > 0 else "<X").edges().chamfer(CAP_CHAMFER)
+    end = outer.intersect(box(OUT_X - CAP_LIP - 3, BIG, -BIG, BIG, -BIG, BIG) if side > 0
+                          else box(-BIG, -(OUT_X - CAP_LIP - 3), -BIG, BIG, -BIG, BIG))
+    try:
+        cap = prism.cut(offset_body(end, -CAP_GRIP))
+    except Exception:
+        cap = prism.cut(end)          # zero clearance; FDM undersizes cavities slightly anyway
+
+    cap = to_board(cap)
+    # keep the lip on the screen face short, blending into the full lip at 45 deg
+    zf = FACE_OUT - 0.5
+    zl = zf - (CAP_LIP + 1 - CAP_FACE_LIP)
+    trim = (cq.Workplane("XZ").polyline([
+        (side * (OUT_X - CAP_FACE_LIP), FACE_OUT + 20), (side * (OUT_X - CAP_FACE_LIP), zf),
+        (side * (OUT_X - CAP_LIP - 1), zl), (-side * BIG, zl), (-side * BIG, FACE_OUT + 20)])
+        .close().extrude(BIG, both=True))
+    cap = cap.cut(trim)
+    for hx, hy in HOLES:
+        if hx * side > 0:
+            cap = cap.cut(cyl(hx, hy, -BIG, SEAT_Z, CAP_SCREW_D))
+    if side < 0:
+        m = 1.0
+        usb = (cq.Workplane().box(20, USB_Y1 - USB_Y0 + 2 * m, USB_Z1 - USB_Z0 + 2 * m, centered=False)
+               .translate((-OUT_X - 19.5, USB_Y0 - m, USB_Z0 - m)).edges("|X").fillet(2.5 + m))
+        cap = cap.cut(usb)
+    return to_world(cap)
+
+
 def bezel_print_pose(bz):
     # face down on the bed
     return bz.rotate((0, 0, 0), (1, 0, 0), 180).translate((0, 0, FACE_OUT))
@@ -244,12 +311,20 @@ if __name__ == "__main__":
 
     # quick print to check the USB slot against your board before the full bezel
     fit_test = bezel.intersect(box(-BIG, -33.0, -BIG, BIG, -BIG, BIG))
+    cap_usb, cap_ldr = make_cap(-1), make_cap(+1)
+
+    def cap_print_pose(cap, side):
+        # end panel flat on the bed
+        c = cap.rotate((0, 0, 0), (0, 1, 0), 90 * side)
+        return c.translate((0, 0, -c.val().BoundingBox().zmin))
 
     exports = {
         "CYD2USB_wedge_front_bezel_heatset.stl": bezel_print_pose(bezel),
         "CYD2USB_wedge_front_bezel_selftap.stl": bezel_print_pose(bezel_st),
         "CYD2USB_wedge_rear_wedge.stl": wedge,
         "CYD2USB_wedge_fit_test_usb_end.stl": bezel_print_pose(fit_test),
+        "CYD2USB_wedge_tpu_cap_usb_end.stl": cap_print_pose(cap_usb, -1),
+        "CYD2USB_wedge_tpu_cap_sensor_end.stl": cap_print_pose(cap_ldr, +1),
     }
     for name, part in exports.items():
         path = os.path.join(OUT, name)
@@ -271,4 +346,6 @@ if __name__ == "__main__":
     asm = cq.Assembly()
     asm.add(to_world(bezel), name="front_bezel", color=cq.Color(0.15, 0.15, 0.17))
     asm.add(wedge, name="rear_wedge", color=cq.Color(0.95, 0.75, 0.1))
+    asm.add(cap_usb, name="tpu_cap_usb_end", color=cq.Color(0.2, 0.45, 0.85))
+    asm.add(cap_ldr, name="tpu_cap_sensor_end", color=cq.Color(0.2, 0.45, 0.85))
     asm.save(os.path.join(OUT, "CYD2USB_wedge_assembly.step"))
