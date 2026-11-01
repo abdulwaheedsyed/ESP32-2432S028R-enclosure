@@ -57,6 +57,16 @@ JST_BOTTOM = [(-16.15, 7.0)]             # speaker on the -y wall
 USB_Y0_JST = -13.5                       # USB slot stretched over the P1 serial/power connector
 SD_POCKET_MARGIN_JST = 1.5               # narrower microSD pocket, leaves a web next to CN1
 
+# Lids that press into the side openings (TPU recommended; for PLA set LID_CLR to ~0.15)
+LID_CLR = 0.05                           # gap per side between a lid and its opening
+LID_FLANGE, LID_FLANGE_T = 0.85, 1.2     # USB lid's outer flange; fits inside the TPU cap's opening
+SD_LID_DEPTH = 0.65                      # tongue into the microSD slot, stops short of the card
+# The USB-C position on the dual-USB board isn't in any drawing. Assumed: USB-C nearer the
+# middle of the short edge, micro-USB nearer the microSD side (centre taken from a known
+# USB-C CYD case). Move USBC_Y if your board differs.
+USBC_Y, USBC_Z = 2.5, (USB_Z0 + USB_Z1) / 2
+USBC_OPEN_W, USBC_OPEN_H = 13.0, 7.2     # clears a USB-C plug overmold (spec max 12.35 x 6.5)
+
 # ------------------------------------------------------------------ case
 FACE_IN = DISP_TOP + 1.0                # 1 mm air gap over the touch panel
 FACE_T = 2.5
@@ -318,6 +328,30 @@ def make_cap(side, jst=False):
     return to_world(cap)
 
 
+# ------------------------------------------------------------------ lids
+def make_lids():
+    """microSD lid and USB-C-only lid, in the board frame at their fitted position."""
+    c = LID_CLR
+    # microSD lid: fills the fingernail pocket flush, with a tongue into the card slot.
+    # Sized to the narrower JST-variant pocket so the same lid fits both bezels.
+    px0, px1 = SD_X0 - 3, SD_X1 + SD_POCKET_MARGIN_JST
+    pz0, pz1 = SD_Z0 - 2.4, SD_Z1 + 2.2
+    sd = rbox(px0 + c, px1 - c, OUT_Y - 1.4 + c, OUT_Y, pz0 + c, pz1 - c, 2.0 - c, "|Y")
+    sd = sd.union(rbox(SD_X0 + c, SD_X1 - c, OUT_Y - 1.4 - SD_LID_DEPTH, OUT_Y - 1.4 + c + 0.01,
+                       SD_Z0 + c, SD_Z1 - c, 0.8 - c, "|Y"))
+    sd = sd.cut(rbox(px1 - 2.2, px1 + 1, OUT_Y - 0.7, OUT_Y + 1, -2.2, -0.2, 0.5, "|Y"))  # nail notch
+
+    # USB lid: fills the USB slot, flange outside, opening only where the USB-C plug goes
+    f = LID_FLANGE
+    usb = rbox(-OUT_X - 0.01, -(OUT_X - WALL) - 0.2, USB_Y0 + c, USB_Y1 - c,
+               USB_Z0 + c, USB_Z1 - c, 2.5 - c, "|X")
+    usb = usb.union(rbox(-OUT_X - LID_FLANGE_T, -OUT_X, USB_Y0 - f, USB_Y1 + f,
+                         USB_Z0 - f, USB_Z1 + f, 2.5 + f, "|X"))
+    usb = usb.cut(rbox(-OUT_X - 5, 0, USBC_Y - USBC_OPEN_W / 2, USBC_Y + USBC_OPEN_W / 2,
+                       USBC_Z - USBC_OPEN_H / 2, USBC_Z + USBC_OPEN_H / 2, 1.0, "|X"))
+    return sd, usb
+
+
 def bezel_print_pose(bz):
     # face down on the bed
     return bz.rotate((0, 0, 0), (1, 0, 0), 180).translate((0, 0, FACE_OUT))
@@ -340,10 +374,15 @@ if __name__ == "__main__":
     fit_test_jst = bezel_jst.intersect(box(-BIG, -33.0, -BIG, BIG, -BIG, BIG).union(
         box(-BIG, BIG, 12.0, BIG, -BIG, BIG)))
 
+    lid_sd, lid_usb = make_lids()
+
     def cap_print_pose(cap, side):
         # end panel flat on the bed
         c = cap.rotate((0, 0, 0), (0, 1, 0), 90 * side)
         return c.translate((0, 0, -c.val().BoundingBox().zmin))
+
+    def on_bed(part):
+        return part.translate((0, 0, -part.val().BoundingBox().zmin))
 
     exports = {
         "CYD2USB_wedge_front_bezel_heatset.stl": bezel_print_pose(bezel),
@@ -356,6 +395,9 @@ if __name__ == "__main__":
         "CYD2USB_wedge_jst_front_bezel_selftap.stl": bezel_print_pose(bezel_jst_st),
         "CYD2USB_wedge_jst_tpu_cap_usb_end.stl": cap_print_pose(cap_usb_jst, -1),
         "CYD2USB_wedge_jst_fit_test.stl": bezel_print_pose(fit_test_jst),
+        # lids print with their outer face on the bed
+        "CYD2USB_wedge_lid_microsd.stl": on_bed(lid_sd.rotate((0, 0, 0), (1, 0, 0), -90)),
+        "CYD2USB_wedge_lid_usb_c_only.stl": on_bed(lid_usb.rotate((0, 0, 0), (0, 1, 0), -90)),
     }
     for name, part in exports.items():
         path = os.path.join(OUT, name)
