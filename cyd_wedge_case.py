@@ -55,6 +55,7 @@ JST_Z0, JST_Z1 = -4.6, 0.6
 JST_TOP = [(11.85, 8.6), (28.5, 8.6)]    # CN1, P3 on the microSD (+y) wall: centre x, width
 JST_BOTTOM = [(-16.15, 7.0)]             # speaker on the -y wall
 USB_Y0_JST = -13.5                       # USB slot stretched over the P1 serial/power connector
+P1_Y, P1_OPEN_W = -9.2, 7.8              # P1 centre along the USB edge; its opening in the JST USB lid
 SD_POCKET_MARGIN_JST = 1.5               # narrower microSD pocket, leaves a web next to CN1
 
 # Lids that press into the side openings (TPU recommended; for PLA set LID_CLR to ~0.15)
@@ -329,8 +330,9 @@ def make_cap(side, jst=False):
 
 
 # ------------------------------------------------------------------ lids
-def make_lids():
-    """microSD lid and USB-C-only lid, in the board frame at their fitted position."""
+def make_lids(jst=False):
+    """microSD lid and USB lid, in the board frame at their fitted position.
+    jst=True: USB lid for the JST variant's longer slot, leaving USB-C and P1 open."""
     c = LID_CLR
     # microSD lid: fills the fingernail pocket flush, with a tongue into the card slot.
     # Sized to the narrower JST-variant pocket so the same lid fits both bezels.
@@ -343,12 +345,16 @@ def make_lids():
 
     # USB lid: fills the USB slot, flange outside, opening only where the USB-C plug goes
     f = LID_FLANGE
-    usb = rbox(-OUT_X - 0.01, -(OUT_X - WALL) - 0.2, USB_Y0 + c, USB_Y1 - c,
+    y0 = USB_Y0_JST if jst else USB_Y0
+    usb = rbox(-OUT_X - 0.01, -(OUT_X - WALL) - 0.2, y0 + c, USB_Y1 - c,
                USB_Z0 + c, USB_Z1 - c, 2.5 - c, "|X")
-    usb = usb.union(rbox(-OUT_X - LID_FLANGE_T, -OUT_X, USB_Y0 - f, USB_Y1 + f,
+    usb = usb.union(rbox(-OUT_X - LID_FLANGE_T, -OUT_X, y0 - f, USB_Y1 + f,
                          USB_Z0 - f, USB_Z1 + f, 2.5 + f, "|X"))
     usb = usb.cut(rbox(-OUT_X - 5, 0, USBC_Y - USBC_OPEN_W / 2, USBC_Y + USBC_OPEN_W / 2,
                        USBC_Z - USBC_OPEN_H / 2, USBC_Z + USBC_OPEN_H / 2, 1.0, "|X"))
+    if jst:  # second opening for the P1 serial/power plug
+        usb = usb.cut(rbox(-OUT_X - 5, 0, P1_Y - P1_OPEN_W / 2, P1_Y + P1_OPEN_W / 2,
+                           JST_Z0, JST_Z1, 1.0, "|X"))
     return sd, usb
 
 
@@ -375,6 +381,7 @@ if __name__ == "__main__":
         box(-BIG, BIG, 12.0, BIG, -BIG, BIG)))
 
     lid_sd, lid_usb = make_lids()
+    lid_usb_jst = make_lids(jst=True)[1]
 
     def cap_print_pose(cap, side):
         # end panel flat on the bed
@@ -398,6 +405,7 @@ if __name__ == "__main__":
         # lids print with their outer face on the bed
         "CYD2USB_wedge_lid_microsd.stl": on_bed(lid_sd.rotate((0, 0, 0), (1, 0, 0), -90)),
         "CYD2USB_wedge_lid_usb_c_only.stl": on_bed(lid_usb.rotate((0, 0, 0), (0, 1, 0), -90)),
+        "CYD2USB_wedge_jst_lid_usb_c_and_p1.stl": on_bed(lid_usb_jst.rotate((0, 0, 0), (0, 1, 0), -90)),
     }
     for name, part in exports.items():
         path = os.path.join(OUT, name)

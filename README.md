@@ -44,6 +44,7 @@ The exact USB-C and micro-USB positions aren't published for the dual-USB board.
 | `CYD2USB_wedge_jst_fit_test.stl` | PLA | Face down. L-shaped check of the USB end and the microSD-side ports |
 | `CYD2USB_wedge_lid_microsd.stl` | TPU (or PLA) | Outer face down (as exported). Covers the microSD slot |
 | `CYD2USB_wedge_lid_usb_c_only.stl` | TPU (or PLA) | Flange down (as exported). Covers micro-USB, leaves USB-C open |
+| `CYD2USB_wedge_jst_lid_usb_c_and_p1.stl` | TPU (or PLA) | Flange down (as exported). JST variant: covers micro-USB, leaves USB-C and P1 open |
 | `CYD2USB_wedge_assembly.step` | — | Assembled model for CAD (standard version) |
 | `cyd_wedge_case.py` | — | Parametric CadQuery source for everything above |
 
@@ -127,14 +128,15 @@ To build it, use `CYD2USB_wedge_jst_front_bezel_heatset.stl` (or the self-tap ve
 
 ![Lids](preview_lids.png)
 
-Two small press-fit lids close openings you don't use. Both work with or without the TPU end caps.
+Small press-fit lids close openings you don't use. All of them work with or without the TPU end caps.
 
 - **microSD lid** (`CYD2USB_wedge_lid_microsd.stl`). It sits flush in the fingernail pocket, and a short tongue goes into the card slot, stopping 0.75 mm short of the card. Pry it out with a fingernail at the notched end. The same lid fits both the standard and the JST bezel.
-- **USB lid** (`CYD2USB_wedge_lid_usb_c_only.stl`). It fills the USB slot and leaves an opening only for a USB-C plug, which clears the USB-C spec's largest overmold (12.35 × 6.5 mm). A thin outer flange stops it going in too far; with the TPU cap fitted, the flange sits inside the cap's opening. To remove it, hook a fingernail in the USB-C opening and pull. This lid is for the standard bezel only: the JST variant's longer slot also has to leave P1 open.
+- **USB lid** (`CYD2USB_wedge_lid_usb_c_only.stl`). It fills the USB slot and leaves an opening only for a USB-C plug, which clears the USB-C spec's largest overmold (12.35 × 6.5 mm). A thin outer flange stops it going in too far; with the TPU cap fitted, the flange sits inside the cap's opening. To remove it, hook a fingernail in the USB-C opening and pull. This lid fits the standard bezel.
+- **JST-variant USB lid** (`CYD2USB_wedge_jst_lid_usb_c_and_p1.stl`). This is the same idea for the JST bezel's longer slot. It covers micro-USB and has two openings, one for the USB-C plug and one for the P1 serial/power plug, with a 1.3 mm web between them. It also fits inside the JST variant's TPU cap.
 
 **Print** in TPU 95A with the outer face on the bed, no supports, for a snug press fit. PLA works too: set `LID_CLR = 0.15` in the script and regenerate, or scale the lid down about 1 % in your slicer.
 
-**USB-C position.** The positions of the two USB ports on the dual-USB board aren't documented. The USB lid assumes USB-C is nearer the middle of the short edge and micro-USB nearer the microSD side. Check it against your board, or against the USB fit-test piece, before printing. If yours differs, change `USBC_Y` in the script; it's the USB-C centre, measured along the short edge from the board centre, positive towards the microSD side.
+**USB-C position.** The positions of the two USB ports on the dual-USB board aren't documented. Both USB lids assume USB-C is nearer the middle of the short edge and micro-USB nearer the microSD side. Check it against your board, or against the USB fit-test piece, before printing. If yours differs, change `USBC_Y` in the script; it's the USB-C centre, measured along the short edge from the board centre, positive towards the microSD side.
 
 ## Customising
 
@@ -156,7 +158,8 @@ Useful parameters at the top of the file:
 | `HEEL_Y` | Base depth (stability against tipping) |
 | `CAP_T`, `CAP_LIP`, `CAP_FACE_LIP`, `CAP_GRIP` | TPU cap thickness, wrap-around and fit |
 | `JST_TOP`, `JST_BOTTOM`, `JST_Z0`, `JST_Z1`, `USB_Y0_JST` | JST port positions and sizes (variant only) |
-| `USBC_Y`, `USBC_Z`, `USBC_OPEN_W`, `USBC_OPEN_H` | USB-C opening in the USB lid |
+| `USBC_Y`, `USBC_Z`, `USBC_OPEN_W`, `USBC_OPEN_H` | USB-C opening in the USB lids |
+| `P1_Y`, `P1_OPEN_W` | P1 opening in the JST-variant USB lid |
 | `LID_CLR`, `SD_LID_DEPTH` | Lid press-fit clearance and the microSD tongue depth |
 
 ## Notes and limitations
